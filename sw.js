@@ -1,10 +1,12 @@
-const CACHE_NAME = 'cartes-fidelite-v1';
+const CACHE_NAME = 'cartes-fidelite-v2';
 const ASSETS = [
   './',
   './index.html',
   './app.js',
+  './style.css',
   './manifest.json',
-  'https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js'
+  'https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js',
+  'https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js'
 ];
 
 self.addEventListener('install', (event) => {

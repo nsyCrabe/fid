@@ -1,7 +1,7 @@
 {
   "name": "Mes Cartes de Fidélité",
   "short_name": "Fidélité",
-  "description": "Toutes tes cartes de fidélité au même endroit, avec scan de code-barres.",
+  "description": "Toutes tes cartes de fidélité au même endroit, avec scan de code-barres et thèmes personnalisables.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
