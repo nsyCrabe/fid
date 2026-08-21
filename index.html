@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Mes Cartes de Fidélité</title>
+<meta name="theme-color" content="#1a1a2e">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: linear-gradient(160deg, #1a1a2e 0%, #16213e 100%);
+    color: #eee;
+    min-height: 100vh;
+    padding-bottom: 90px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  header {
+    padding: 20px 16px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  header h1 {
+    font-size: 1.4rem;
+    font-weight: 700;
+  }
+  header .sub {
+    font-size: 0.75rem;
+    color: #9aa0b4;
+    margin-top: 2px;
+  }
+  #searchBar {
+    padding: 0 16px 12px;
+  }
+  #searchBar input {
+    width: 100%;
+    padding: 12px 14px;
+    border-radius: 14px;
+    border: none;
+    background: #22243a;
+    color: #fff;
+    font-size: 0.95rem;
+  }
+  #cardsGrid {
+    padding: 8px 16px 20px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .card {
+    border-radius: 18px;
+    padding: 16px 14px;
+    min-height: 110px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+    cursor: pointer;
+    transition: transform 0.15s ease;
+    color: #fff;
+  }
+  .card:active { transform: scale(0.96); }
+  .card .name {
+    font-weight: 700;
+    font-size: 1rem;
+    line-height: 1.2;
+  }
+  .card .type {
+    font-size: 0.7rem;
+    opacity: 0.85;
+    margin-top: 2px;
+  }
+  .card .logo-letter {
+    font-size: 1.6rem;
+    font-weight: 800;
+    align-self: flex-end;
+    opacity: 0.9;
+  }
+  #emptyState {
+    text-align: center;
+    padding: 60px 24px;
+    color: #7a7f95;
+  }
+  #emptyState .big { font-size: 3rem; margin-bottom: 10px; }
+
+  #fab {
+    position: fixed;
+    bottom: 24px;
+    right: 20px;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: #5b8def;
+    color: #fff;
+    font-size: 2rem;
+    border: none;
+    box-shadow: 0 6px 18px rgba(91,141,239,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+  }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: none;
+    align-items: flex-end;
+    z-index: 100;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal {
+    background: #1e2038;
+    width: 100%;
+    border-radius: 24px 24px 0 0;
+    padding: 22px 20px 30px;
+    max-height: 92vh;
+    overflow-y: auto;
+    animation: slideUp 0.25s ease;
+  }
+  @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  .modal h2 { font-size: 1.2rem; margin-bottom: 16px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 0.8rem; color: #9aa0b4; margin-bottom: 6px; }
+  .field input, .field select {
+    width: 100%;
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid #333654;
+    background: #14152a;
+    color: #fff;
+    font-size: 0.95rem;
+  }
+  .color-row { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+  .color-dot {
+    width: 32px; height: 32px; border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+  }
+  .color-dot.selected { border-color: #fff; }
+  .btn-row { display: flex; gap: 10px; margin-top: 20px; }
+  .btn {
+    flex: 1;
+    padding: 14px;
+    border-radius: 14px;
+    border: none;
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+  .btn-primary { background: #5b8def; color: #fff; }
+  .btn-secondary { background: #2a2c47; color: #ccc; }
+  .btn-danger { background: #3a1f2b; color: #f28ca0; }
+
+  /* Détail carte plein écran */
+  .detail-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .detail-overlay.active { display: flex; }
+  .detail-close {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    background: rgba(255,255,255,0.15);
+    border: none;
+    color: #fff;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    font-size: 1.3rem;
+  }
+  .detail-actions {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    display: flex;
+    gap: 10px;
+  }
+  .detail-actions button {
+    background: rgba(255,255,255,0.15);
+    border: none;
+    color: #fff;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    font-size: 1.1rem;
+  }
+  .detail-card {
+    background: #fff;
+    border-radius: 20px;
+    width: 100%;
+    max-width: 360px;
+    padding: 30px 20px;
+    text-align: center;
+    color: #111;
+  }
+  .detail-card .name { font-size: 1.4rem; font-weight: 800; margin-bottom: 4px; color: #111;}
+  .detail-card .type { font-size: 0.85rem; color: #666; margin-bottom: 22px; }
+  #barcodeCanvas { width: 100%; max-width: 320px; height: 100px; }
+  .code-text {
+    font-family: monospace;
+    font-size: 1.1rem;
+    letter-spacing: 2px;
+    margin-top: 10px;
+    color: #333;
+  }
+
+  /* Scanner overlay */
+  .scan-overlay {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    z-index: 300;
+    display: none;
+    flex-direction: column;
+  }
+  .scan-overlay.active { display: flex; }
+  #scanVideo { width: 100%; flex: 1; object-fit: cover; }
+  .scan-header {
+    padding: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: #fff;
+    background: rgba(0,0,0,0.5);
+  }
+  .scan-hint {
+    text-align: center;
+    color: #fff;
+    padding: 16px;
+    font-size: 0.85rem;
+    background: rgba(0,0,0,0.5);
+  }
+  .toast {
+    position: fixed;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #2ecc71;
+    color: #fff;
+    padding: 10px 18px;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    z-index: 400;
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>💳 Mes Cartes</h1>
+    <div class="sub" id="cardCount">0 carte enregistrée</div>
+  </div>
+</header>
+
+<div id="searchBar">
+  <input type="text" id="searchInput" placeholder="Rechercher une enseigne...">
+</div>
+
+<div id="cardsGrid"></div>
+<div id="emptyState" style="display:none;">
+  <div class="big">🪪</div>
+  <div>Aucune carte pour l'instant.<br>Appuie sur + pour en ajouter une.</div>
+</div>
+
+<button id="fab">+</button>
+
+<!-- Modal ajout/édition -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h2 id="modalTitle">Nouvelle carte</h2>
+    <div class="field">
+      <label>Nom de l'enseigne</label>
+      <input type="text" id="inputName" placeholder="Ex: Carrefour, Auchan...">
+    </div>
+    <div class="field">
+      <label>Type de code</label>
+      <select id="inputCodeType">
+        <option value="barcode">Code-barres (numéro de carte)</option>
+        <option value="qrcode">QR Code</option>
+        <option value="none">Aucun code (juste un numéro)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Numéro de carte / code</label>
+      <div style="display:flex; gap:8px;">
+        <input type="text" id="inputCode" placeholder="Scanner ou saisir le numéro" style="flex:1;">
+        <button class="btn btn-secondary" id="scanBtn" style="flex:0 0 auto; padding:12px 16px;">📷</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>Couleur</label>
+      <div class="color-row" id="colorRow"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" id="cancelBtn">Annuler</button>
+      <button class="btn btn-primary" id="saveBtn">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Détail carte -->
+<div class="detail-overlay" id="detailOverlay">
+  <button class="detail-close" id="detailClose">←</button>
+  <div class="detail-actions">
+    <button id="detailEdit">✏️</button>
+    <button id="detailDelete">🗑️</button>
+  </div>
+  <div class="detail-card" id="detailCard">
+    <div class="name" id="detailName"></div>
+    <div class="type" id="detailType"></div>
+    <canvas id="barcodeCanvas"></canvas>
+    <div class="code-text" id="detailCodeText"></div>
+  </div>
+</div>
+
+<!-- Scanner caméra -->
+<div class="scan-overlay" id="scanOverlay">
+  <div class="scan-header">
+    <button id="scanClose" style="background:none;border:none;color:#fff;font-size:1.2rem;">✕ Fermer</button>
+    <span>Scanner un code</span>
+  </div>
+  <video id="scanVideo" autoplay playsinline muted></video>
+  <div class="scan-hint" id="scanHint">Vise le code-barres ou QR code de ta carte</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+<script src="app.js"></script>
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(console.error);
+}
+</script>
+</body>
+</html>
