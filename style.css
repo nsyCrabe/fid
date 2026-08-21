@@ -98,6 +98,8 @@ body[data-theme="mono"] {
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+html, body { height: 100%; }
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: linear-gradient(160deg, var(--bg-grad-1) 0%, var(--bg-grad-2) 100%);
@@ -240,7 +242,7 @@ header .sub {
 }
 #fab:active { transform: scale(0.9); }
 
-/* Modal */
+/* Modal ajout/édition + thème */
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -345,58 +347,80 @@ header .sub {
   margin-bottom: 8px;
 }
 
-/* Détail carte plein écran */
+/* ===== Détail carte plein écran — CORRIGÉ ===== */
 .detail-overlay {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
   z-index: 200;
   display: none;
+  background: rgba(0,0,0,0.8);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.detail-overlay.active {
+  display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 24px;
-  background: rgba(0,0,0,0.75);
+  padding: 24px 20px;
 }
-.detail-overlay.active { display: flex; }
 .detail-close, .detail-actions button {
-  position: absolute;
-  background: rgba(255,255,255,0.15);
+  position: fixed;
+  background: rgba(255,255,255,0.18);
   border: none;
   color: #fff;
   width: 42px;
   height: 42px;
   border-radius: 50%;
   font-size: 1.2rem;
+  z-index: 210;
+  backdrop-filter: blur(4px);
 }
 .detail-close { top: 24px; left: 20px; }
-.detail-actions { top: 24px; right: 20px; display: flex; gap: 10px; }
-.detail-actions button { position: relative; }
+.detail-actions {
+  position: fixed;
+  top: 24px;
+  right: 20px;
+  display: flex;
+  gap: 10px;
+  z-index: 210;
+}
+.detail-actions button { position: relative; top: 0; right: 0; }
 .detail-card {
   background: #fff;
   border-radius: 24px;
   width: 100%;
-  max-width: 360px;
+  max-width: 340px;
+  margin: auto;
   padding: 0 0 30px;
   text-align: center;
   color: #111;
   overflow: hidden;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.5);
 }
 .detail-banner {
-  height: 110px;
+  height: 100px;
   background-size: cover;
   background-position: center;
   background-color: #5b8def;
 }
-.detail-card .name { font-size: 1.4rem; font-weight: 800; margin: 20px 0 4px; color: #111; }
-.detail-card .type { font-size: 0.85rem; color: #666; margin-bottom: 22px; }
-#barcodeCanvas { width: 90%; max-width: 300px; height: 100px; }
+.detail-card .name { font-size: 1.4rem; font-weight: 800; margin: 20px 0 4px; color: #111; padding: 0 16px; }
+.detail-card .type { font-size: 0.85rem; color: #666; margin-bottom: 20px; }
+#barcodeCanvas { width: 90%; max-width: 280px; height: 90px; }
 #qrHolder { display: flex; justify-content: center; margin-top: 10px; }
 .code-text {
   font-family: monospace;
-  font-size: 1.1rem;
-  letter-spacing: 2px;
+  font-size: 1rem;
+  letter-spacing: 1.5px;
   margin-top: 12px;
   color: #333;
+  padding: 0 16px;
+  word-break: break-all;
 }
 
 /* Scanner */
