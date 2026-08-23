@@ -1,383 +1,222 @@
-// ===== Mes Cartes de Fidélité - App logic v2 =====
-const STORAGE_KEY = 'loyalty_cards_v1';
-const THEME_KEY = 'loyalty_theme_v1';
+/* ===== Mes cartes — interface simple ===== */
+const CARDS_KEY = 'loyalty_cards_v1';
+const THEME_KEY = 'loyalty_theme_v2';
 
-const COLORS = [
-  '#e74c3c', '#e67e22', '#f1c40f', '#2ecc71', '#1abc9c',
-  '#3498db', '#5b8def', '#9b59b6', '#34495e', '#16a085',
-  '#c0392b', '#7f8c8d'
-];
-
+const COLORS = ['#2264d1', '#8b5cf6', '#e05252', '#e88b27', '#168c65', '#008da8', '#d04d91', '#475569'];
 const THEMES = [
-  { id: 'midnight', label: 'Minuit', swatch: 'linear-gradient(135deg,#1a1a2e,#5b8def)' },
-  { id: 'sunset',   label: 'Coucher de soleil', swatch: 'linear-gradient(135deg,#4a1942,#ff6b6b)' },
-  { id: 'forest',   label: 'Forêt', swatch: 'linear-gradient(135deg,#163023,#3ddc84)' },
-  { id: 'ocean',    label: 'Océan', swatch: 'linear-gradient(135deg,#0a2e45,#00c2d1)' },
-  { id: 'candy',    label: 'Bonbon', swatch: 'linear-gradient(135deg,#f8dbe9,#ff5da2)' },
-  { id: 'mono',     label: 'Mono', swatch: 'linear-gradient(135deg,#161616,#ffffff)' }
+  { id: 'light', name: 'Clair', description: 'Propre et lumineux', swatch: 'linear-gradient(135deg,#f4f7fb,#3268e8)' },
+  { id: 'midnight', name: 'Minuit', description: 'Confortable le soir', swatch: 'linear-gradient(135deg,#0e1525,#5c8df6)' },
+  { id: 'sunset', name: 'Coucher de soleil', description: 'Chaleureux et doux', swatch: 'linear-gradient(135deg,#fff5f1,#ed6d5b)' },
+  { id: 'forest', name: 'Forêt', description: 'Nature et calme', swatch: 'linear-gradient(135deg,#eef8f2,#27975d)' },
+  { id: 'ocean', name: 'Océan', description: 'Frais et moderne', swatch: 'linear-gradient(135deg,#edf9fc,#008fa8)' },
+  { id: 'candy', name: 'Bonbon', description: 'Rose et léger', swatch: 'linear-gradient(135deg,#fff3f8,#ed5594)' },
+  { id: 'mono', name: 'Noir et blanc', description: 'Minimaliste', swatch: 'linear-gradient(135deg,#101010,#fff)' }
 ];
 
 let cards = [];
 let editingId = null;
-let currentDetailId = null;
-let selectedColor = COLORS[5];
-let selectedImage = null;
+let openedId = null;
+let selectedColor = COLORS[0];
+let selectedLogo = null;
 let stream = null;
-let detectorInterval = null;
+let detectorTimer = null;
 
-function loadCards() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    cards = raw ? JSON.parse(raw) : [];
-  } catch (e) { cards = []; }
-}
-function saveCards() { localStorage.setItem(STORAGE_KEY, JSON.stringify(cards)); }
+const $ = (id) => document.getElementById(id);
 
-function loadTheme() {
-  const t = localStorage.getItem(THEME_KEY) || 'midnight';
-  document.body.setAttribute('data-theme', t);
-  const meta = document.getElementById('themeColorMeta');
-  const colors = { midnight:'#1a1a2e', sunset:'#4a1942', forest:'#163023', ocean:'#0a2e45', candy:'#fdeef5', mono:'#0a0a0a' };
-  meta.setAttribute('content', colors[t] || '#1a1a2e');
-}
-function setTheme(id) {
-  localStorage.setItem(THEME_KEY, id);
-  loadTheme();
-  renderThemeGrid();
+function load() {
+  try { cards = JSON.parse(localStorage.getItem(CARDS_KEY) || '[]'); } catch { cards = []; }
+  setTheme(localStorage.getItem(THEME_KEY) || 'light', false);
+  $('quickGuide').hidden = localStorage.getItem('loyalty_hide_guide') === '1';
 }
 
-function uid() { return 'c_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8); }
+function save() { localStorage.setItem(CARDS_KEY, JSON.stringify(cards)); }
 
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.style.display = 'block';
-  setTimeout(() => { t.style.display = 'none'; }, 1800);
+function setTheme(theme, persist = true) {
+  document.body.dataset.theme = theme;
+  if (persist) localStorage.setItem(THEME_KEY, theme);
+  const meta = $('themeColorMeta');
+  const colors = { light: '#f4f7fb', midnight: '#0e1525', sunset: '#fff5f1', forest: '#eef8f2', ocean: '#edf9fc', candy: '#fff3f8', mono: '#101010' };
+  meta.content = colors[theme] || colors.light;
+  renderThemes();
 }
 
+function uid() { return `card_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`; }
 function initials(name) { return name.trim().slice(0, 2).toUpperCase(); }
+function escapeHtml(value) { const el = document.createElement('span'); el.textContent = value; return el.innerHTML; }
+function typeLabel(type) { return type === 'barcode' ? 'Code-barres' : type === 'qrcode' ? 'QR code' : 'Sans code'; }
+function darken(hex, amount = -30) {
+  const n = parseInt(hex.replace('#', ''), 16);
+  const c = (v) => Math.max(0, Math.min(255, v + amount));
+  return `#${((1 << 24) + (c(n >> 16) << 16) + (c((n >> 8) & 255) << 8) + c(n & 255)).toString(16).slice(1)}`;
+}
 
-function renderGrid() {
-  const grid = document.getElementById('cardsGrid');
-  const empty = document.getElementById('emptyState');
-  const query = document.getElementById('searchInput').value.trim().toLowerCase();
-  const filtered = cards.filter(c => c.name.toLowerCase().includes(query));
-
-  document.getElementById('cardCount').textContent =
-    cards.length + (cards.length === 1 ? ' carte enregistrée' : ' cartes enregistrées');
-
+function render() {
+  const grid = $('cardsGrid');
+  const query = $('searchInput').value.trim().toLowerCase();
+  const filtered = cards.filter((card) => card.name.toLowerCase().includes(query));
   grid.innerHTML = '';
-  if (filtered.length === 0) {
-    empty.style.display = 'block';
-    grid.style.display = 'none';
+  $('cardCount').textContent = `${cards.length} carte${cards.length === 1 ? '' : 's'}`;
+  $('emptyState').hidden = cards.length !== 0 || query.length === 0;
+  if (cards.length === 0) $('emptyState').hidden = false;
+  if (filtered.length === 0 && cards.length > 0) {
+    grid.innerHTML = '<p class="no-result">Aucune carte trouvée.</p>';
     return;
   }
-  empty.style.display = 'none';
-  grid.style.display = 'grid';
-
-  filtered.forEach((c, i) => {
-    const div = document.createElement('div');
-    div.className = 'card';
-    div.style.animationDelay = (i * 0.03) + 's';
-
-    if (c.image) {
-      div.innerHTML = `
-        <div class="card-image-bg" style="background-image:url('${c.image}')"></div>
-        <div class="card-content">
-          <div></div>
-          <div>
-            <div class="name">${escapeHtml(c.name)}</div>
-            <div class="type">${labelForType(c.codeType)}</div>
-          </div>
-        </div>
-      `;
-    } else {
-      div.style.background = `linear-gradient(135deg, ${c.color}, ${shade(c.color, -25)})`;
-      div.innerHTML = `
-        <div class="card-content">
-          <div>
-            <div class="name">${escapeHtml(c.name)}</div>
-            <div class="type">${labelForType(c.codeType)}</div>
-          </div>
-          <div class="logo-letter">${initials(c.name)}</div>
-        </div>
-      `;
-    }
-    div.addEventListener('click', () => openDetail(c.id));
-    grid.appendChild(div);
+  filtered.forEach((card, index) => {
+    const button = document.createElement('button');
+    button.className = 'loyalty-card';
+    button.type = 'button';
+    button.style.setProperty('--card-color', card.color || COLORS[0]);
+    button.style.setProperty('--card-color-dark', darken(card.color || COLORS[0]));
+    button.style.animationDelay = `${index * 45}ms`;
+    button.setAttribute('aria-label', `Ouvrir la carte ${card.name}`);
+    button.innerHTML = `
+      <div class="card-logo">${card.logo ? `<img src="${card.logo}" alt="Logo ${escapeHtml(card.name)}">` : escapeHtml(initials(card.name))}</div>
+      <div>
+        <p class="card-name">${escapeHtml(card.name)}</p>
+        <p class="card-type">${typeLabel(card.codeType)}</p>
+      </div>
+      <span class="card-arrow">›</span>`;
+    button.addEventListener('click', () => openDetail(card.id));
+    grid.appendChild(button);
   });
 }
 
-function labelForType(t) {
-  if (t === 'barcode') return 'Code-barres';
-  if (t === 'qrcode') return 'QR Code';
-  return 'Numéro';
+function showToast(message) {
+  const old = $('toast');
+  if (old) old.remove();
+  const toast = document.createElement('div');
+  toast.id = 'toast'; toast.className = 'toast'; toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 2200);
 }
 
-function shade(hex, percent) {
-  const num = parseInt(hex.replace('#', ''), 16);
-  let r = (num >> 16) + percent;
-  let g = ((num >> 8) & 0x00FF) + percent;
-  let b = (num & 0x0000FF) + percent;
-  r = Math.min(255, Math.max(0, r));
-  g = Math.min(255, Math.max(0, g));
-  b = Math.min(255, Math.max(0, b));
-  return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+function showForm(id = null) {
+  editingId = id;
+  const card = id ? cards.find((item) => item.id === id) : null;
+  $('formTitle').textContent = card ? 'Modifier la carte' : 'Nouvelle carte';
+  $('nameInput').value = card?.name || '';
+  $('codeInput').value = card?.code || '';
+  $('codeTypeInput').value = card?.codeType || 'barcode';
+  selectedColor = card?.color || COLORS[0];
+  selectedLogo = card?.logo || null;
+  updateLogoPreview();
+  renderColors();
+  openLayer('formSheet', 'formBackdrop');
+  setTimeout(() => $('nameInput').focus(), 100);
 }
 
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
+function closeForm() { closeLayer('formSheet', 'formBackdrop'); editingId = null; }
+function openLayer(panel, backdrop) { $(panel).hidden = false; $(backdrop).hidden = false; document.body.classList.add('no-scroll'); }
+function closeLayer(panel, backdrop) { $(panel).hidden = true; $(backdrop).hidden = true; document.body.classList.remove('no-scroll'); }
+
+function renderColors() {
+  $('colorRow').innerHTML = COLORS.map((color) => `<button type="button" class="color-dot ${color === selectedColor ? 'selected' : ''}" style="background:${color}" data-color="${color}" aria-label="Choisir la couleur"></button>`).join('');
+  $('colorRow').querySelectorAll('.color-dot').forEach((dot) => dot.addEventListener('click', () => { selectedColor = dot.dataset.color; renderColors(); }));
 }
 
-// ---------- Modal ajout/édition ----------
-function openModal(editId = null) {
-  editingId = editId;
-  const modal = document.getElementById('modalOverlay');
-  document.getElementById('inputName').value = '';
-  document.getElementById('inputCode').value = '';
-  document.getElementById('inputCodeType').value = 'barcode';
-  selectedColor = COLORS[Math.floor(Math.random() * COLORS.length)];
-  selectedImage = null;
-  resetImagePreview();
-
-  if (editId) {
-    const c = cards.find(x => x.id === editId);
-    document.getElementById('modalTitle').textContent = 'Modifier la carte';
-    document.getElementById('inputName').value = c.name;
-    document.getElementById('inputCode').value = c.code;
-    document.getElementById('inputCodeType').value = c.codeType;
-    selectedColor = c.color;
-    if (c.image) {
-      selectedImage = c.image;
-      setImagePreview(c.image);
-    }
+function updateLogoPreview() {
+  const preview = $('logoPreview');
+  if (selectedLogo) {
+    preview.innerHTML = `<img src="${selectedLogo}" alt="Logo sélectionné">`;
+    $('removeLogo').hidden = false;
   } else {
-    document.getElementById('modalTitle').textContent = 'Nouvelle carte';
+    preview.innerHTML = '<span id="logoPlaceholder">🏪</span>';
+    $('removeLogo').hidden = true;
   }
-  renderColorRow();
-  modal.classList.add('active');
 }
 
-function closeModal() {
-  document.getElementById('modalOverlay').classList.remove('active');
-  editingId = null;
-}
-
-function resetImagePreview() {
-  const preview = document.getElementById('imagePreview');
-  preview.style.backgroundImage = '';
-  preview.innerHTML = '<span id="imagePlaceholder">📷 Ajouter une image</span>';
-  document.getElementById('removeImageBtn').style.display = 'none';
-}
-
-function setImagePreview(dataUrl) {
-  const preview = document.getElementById('imagePreview');
-  preview.style.backgroundImage = `url('${dataUrl}')`;
-  preview.innerHTML = '';
-  document.getElementById('removeImageBtn').style.display = 'inline-block';
-}
-
-function renderColorRow() {
-  const row = document.getElementById('colorRow');
-  row.innerHTML = '';
-  COLORS.forEach(color => {
-    const dot = document.createElement('div');
-    dot.className = 'color-dot' + (color === selectedColor ? ' selected' : '');
-    dot.style.background = color;
-    dot.addEventListener('click', () => { selectedColor = color; renderColorRow(); });
-    row.appendChild(dot);
-  });
-}
-
-function resizeImage(file, maxSize, callback) {
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const img = new Image();
-    img.onload = () => {
-      let { width, height } = img;
-      if (width > height && width > maxSize) {
-        height *= maxSize / width; width = maxSize;
-      } else if (height > maxSize) {
-        width *= maxSize / height; height = maxSize;
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width = width; canvas.height = height;
-      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-      callback(canvas.toDataURL('image/jpeg', 0.8));
+function resizeLogo(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = (event) => {
+      const image = new Image();
+      image.onload = () => {
+        const size = 320;
+        const canvas = document.createElement('canvas');
+        canvas.width = size; canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, size, size);
+        const scale = Math.min(size / image.width, size / image.height);
+        const width = image.width * scale; const height = image.height * scale;
+        ctx.drawImage(image, (size - width) / 2, (size - height) / 2, width, height);
+        resolve(canvas.toDataURL('image/jpeg', .84));
+      };
+      image.onerror = reject; image.src = event.target.result;
     };
-    img.src = e.target.result;
-  };
-  reader.readAsDataURL(file);
-}
-
-// ---------- Détail carte ----------
-function openDetail(id) {
-  currentDetailId = id;
-  const c = cards.find(x => x.id === id);
-  document.getElementById('detailName').textContent = c.name;
-  document.getElementById('detailType').textContent = labelForType(c.codeType);
-  document.getElementById('detailCodeText').textContent = c.code || '';
-
-  const banner = document.getElementById('detailBanner');
-  if (c.image) {
-    banner.style.backgroundImage = `url('${c.image}')`;
-    banner.style.backgroundColor = 'transparent';
-  } else {
-    banner.style.backgroundImage = '';
-    banner.style.backgroundColor = c.color;
-  }
-
-  const canvas = document.getElementById('barcodeCanvas');
-  const qrHolder = document.getElementById('qrHolder');
-  canvas.style.display = 'none';
-  qrHolder.innerHTML = '';
-
-  if (c.codeType === 'barcode' && c.code) {
-    try {
-      canvas.style.display = 'block';
-      JsBarcode(canvas, c.code, {
-        format: 'CODE128', lineColor: '#000', width: 2, height: 90,
-        displayValue: false, margin: 5
-      });
-    } catch (e) { canvas.style.display = 'none'; }
-  } else if (c.codeType === 'qrcode' && c.code) {
-    if (window.QRCode) new QRCode(qrHolder, { text: c.code, width: 200, height: 200 });
-  }
-
-  document.getElementById('detailOverlay').classList.add('active');
-}
-
-function closeDetail() {
-  document.getElementById('detailOverlay').classList.remove('active');
-  currentDetailId = null;
-}
-
-// ---------- Thèmes ----------
-function renderThemeGrid() {
-  const grid = document.getElementById('themeGrid');
-  const current = localStorage.getItem(THEME_KEY) || 'midnight';
-  grid.innerHTML = '';
-  THEMES.forEach(t => {
-    const opt = document.createElement('div');
-    opt.className = 'theme-option' + (t.id === current ? ' active' : '');
-    opt.innerHTML = `<div class="theme-swatch" style="background:${t.swatch}"></div>${t.label}`;
-    opt.addEventListener('click', () => setTheme(t.id));
-    grid.appendChild(opt);
+    reader.readAsDataURL(file);
   });
 }
 
-// ---------- Scanner caméra ----------
-async function openScanner() {
-  const overlay = document.getElementById('scanOverlay');
-  overlay.classList.add('active');
-  const video = document.getElementById('scanVideo');
-  const hint = document.getElementById('scanHint');
+function saveCard(event) {
+  event.preventDefault();
+  const name = $('nameInput').value.trim();
+  if (!name) return showToast('Ajoute le nom du magasin.');
+  const data = { name, code: $('codeInput').value.trim(), codeType: $('codeTypeInput').value, color: selectedColor, logo: selectedLogo };
+  if (editingId) Object.assign(cards.find((card) => card.id === editingId), data);
+  else cards.push({ id: uid(), ...data, createdAt: Date.now() });
+  try { save(); } catch { return showToast('Stockage plein : choisis un logo plus léger.'); }
+  render(); closeForm(); showToast('Carte enregistrée ✓');
+}
 
-  if (!('BarcodeDetector' in window)) {
-    hint.textContent = "Ton navigateur ne supporte pas le scan auto. Utilise Chrome sur Android, ou saisis le code manuellement.";
-    return;
+function openDetail(id) {
+  openedId = id;
+  const card = cards.find((item) => item.id === id);
+  if (!card) return;
+  $('detailName').textContent = card.name;
+  $('detailType').textContent = typeLabel(card.codeType);
+  $('detailCode').textContent = card.code || '';
+  $('detailLogo').innerHTML = card.logo ? `<img src="${card.logo}" alt="Logo ${escapeHtml(card.name)}">` : escapeHtml(initials(card.name));
+  $('barcodeCanvas').style.display = 'none'; $('qrHolder').innerHTML = '';
+  if (card.code && card.codeType === 'barcode' && window.JsBarcode) {
+    try { $('barcodeCanvas').style.display = 'block'; JsBarcode('#barcodeCanvas', card.code, { format: 'CODE128', displayValue: false, height: 82, width: 2, margin: 5 }); } catch {}
   }
+  if (card.code && card.codeType === 'qrcode' && window.QRCode) new QRCode($('qrHolder'), { text: card.code, width: 190, height: 190 });
+  $('detailPanel').hidden = false; $('detailBackdrop').hidden = false; document.body.classList.add('no-scroll');
+}
+
+function closeDetail() { $('detailPanel').hidden = true; $('detailBackdrop').hidden = true; document.body.classList.remove('no-scroll'); openedId = null; }
+
+function renderThemes() {
+  const current = document.body.dataset.theme;
+  $('themeList').innerHTML = THEMES.map((theme) => `<button type="button" class="theme-option ${theme.id === current ? 'active' : ''}" data-theme="${theme.id}"><span class="theme-swatch" style="background:${theme.swatch}"></span><span><strong>${theme.name}</strong><small>${theme.description}</small></span><span class="theme-check">${theme.id === current ? '✓' : ''}</span></button>`).join('');
+  $('themeList').querySelectorAll('.theme-option').forEach((item) => item.addEventListener('click', () => setTheme(item.dataset.theme)));
+}
+
+async function openScanner() {
+  if (!('BarcodeDetector' in window) || !navigator.mediaDevices?.getUserMedia) return showToast('Scanner indisponible : saisis le code manuellement.');
+  $('scanner').hidden = false;
   try {
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-    video.srcObject = stream;
-    const detector = new BarcodeDetector({
-      formats: ['qr_code', 'code_128', 'ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_39']
-    });
-    detectorInterval = setInterval(async () => {
+    $('scanVideo').srcObject = stream;
+    const detector = new BarcodeDetector({ formats: ['qr_code', 'code_128', 'ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_39'] });
+    detectorTimer = setInterval(async () => {
       try {
-        const barcodes = await detector.detect(video);
-        if (barcodes.length > 0) {
-          const value = barcodes[0].rawValue;
-          const format = barcodes[0].format;
-          document.getElementById('inputCode').value = value;
-          document.getElementById('inputCodeType').value = format === 'qr_code' ? 'qrcode' : 'barcode';
-          closeScanner();
-          showToast('Code détecté ✅');
-        }
-      } catch (e) {}
-    }, 400);
-  } catch (e) {
-    hint.textContent = "Impossible d'accéder à la caméra. Vérifie les autorisations dans les réglages de ton téléphone.";
-  }
+        const result = await detector.detect($('scanVideo'));
+        if (!result.length) return;
+        $('codeInput').value = result[0].rawValue;
+        $('codeTypeInput').value = result[0].format === 'qr_code' ? 'qrcode' : 'barcode';
+        closeScanner(); showToast('Code trouvé ✓');
+      } catch {}
+    }, 350);
+  } catch { closeScanner(); showToast('Autorise la caméra pour scanner.'); }
 }
+function closeScanner() { $('scanner').hidden = true; if (detectorTimer) clearInterval(detectorTimer); detectorTimer = null; if (stream) stream.getTracks().forEach((track) => track.stop()); stream = null; }
 
-function closeScanner() {
-  document.getElementById('scanOverlay').classList.remove('active');
-  if (detectorInterval) { clearInterval(detectorInterval); detectorInterval = null; }
-  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-}
+$('addButton').addEventListener('click', () => showForm());
+$('emptyAddButton').addEventListener('click', () => showForm());
+$('closeForm').addEventListener('click', closeForm); $('cancelForm').addEventListener('click', closeForm); $('formBackdrop').addEventListener('click', closeForm);
+$('cardForm').addEventListener('submit', saveCard);
+$('searchInput').addEventListener('input', render);
+$('hideGuide').addEventListener('click', () => { $('quickGuide').hidden = true; localStorage.setItem('loyalty_hide_guide', '1'); });
+$('chooseLogo').addEventListener('click', () => $('logoInput').click()); $('logoPreview').addEventListener('click', () => $('logoInput').click());
+$('logoInput').addEventListener('change', async (event) => { const file = event.target.files[0]; if (!file) return; try { selectedLogo = await resizeLogo(file); updateLogoPreview(); showToast('Logo ajouté ✓'); } catch { showToast('Image impossible à utiliser.'); } event.target.value = ''; });
+$('removeLogo').addEventListener('click', () => { selectedLogo = null; updateLogoPreview(); });
+$('themeButton').addEventListener('click', () => { renderThemes(); openLayer('themeSheet', 'themeBackdrop'); }); $('closeTheme').addEventListener('click', () => closeLayer('themeSheet', 'themeBackdrop')); $('themeBackdrop').addEventListener('click', () => closeLayer('themeSheet', 'themeBackdrop'));
+$('closeDetail').addEventListener('click', closeDetail); $('closeDetailButton').addEventListener('click', closeDetail); $('detailBackdrop').addEventListener('click', closeDetail);
+$('editCard').addEventListener('click', () => { const id = openedId; closeDetail(); showForm(id); });
+$('deleteCard').addEventListener('click', () => { if (!openedId || !confirm('Supprimer cette carte ?')) return; cards = cards.filter((card) => card.id !== openedId); save(); render(); closeDetail(); showToast('Carte supprimée.'); });
+$('scanButton').addEventListener('click', openScanner); $('closeScanner').addEventListener('click', closeScanner);
 
-function saveCard() {
-  const name = document.getElementById('inputName').value.trim();
-  const code = document.getElementById('inputCode').value.trim();
-  const codeType = document.getElementById('inputCodeType').value;
-
-  if (!name) { showToast('Donne un nom à ta carte 🙂'); return; }
-
-  if (editingId) {
-    const c = cards.find(x => x.id === editingId);
-    c.name = name; c.code = code; c.codeType = codeType;
-    c.color = selectedColor; c.image = selectedImage;
-  } else {
-    cards.push({ id: uid(), name, code, codeType, color: selectedColor, image: selectedImage, createdAt: Date.now() });
-  }
-  saveCards();
-  renderGrid();
-  closeModal();
-  showToast('Carte enregistrée ✅');
-}
-
-// ---------- Events ----------
-document.getElementById('fab').addEventListener('click', () => openModal());
-document.getElementById('cancelBtn').addEventListener('click', closeModal);
-document.getElementById('saveBtn').addEventListener('click', saveCard);
-document.getElementById('scanBtn').addEventListener('click', openScanner);
-document.getElementById('scanClose').addEventListener('click', closeScanner);
-document.getElementById('detailClose').addEventListener('click', closeDetail);
-document.getElementById('searchInput').addEventListener('input', renderGrid);
-
-document.getElementById('imagePicker').addEventListener('click', () => {
-  document.getElementById('imageInput').click();
-});
-document.getElementById('imageInput').addEventListener('change', (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  resizeImage(file, 600, (dataUrl) => {
-    selectedImage = dataUrl;
-    setImagePreview(dataUrl);
-  });
-});
-document.getElementById('removeImageBtn').addEventListener('click', () => {
-  selectedImage = null;
-  resetImagePreview();
-});
-
-document.getElementById('themeBtn').addEventListener('click', () => {
-  renderThemeGrid();
-  document.getElementById('themeOverlay').classList.add('active');
-});
-document.getElementById('closeThemeBtn').addEventListener('click', () => {
-  document.getElementById('themeOverlay').classList.remove('active');
-});
-
-document.getElementById('detailEdit').addEventListener('click', () => {
-  const id = currentDetailId;
-  closeDetail();
-  openModal(id);
-});
-document.getElementById('detailDelete').addEventListener('click', () => {
-  if (confirm('Supprimer cette carte ?')) {
-    cards = cards.filter(c => c.id !== currentDetailId);
-    saveCards();
-    renderGrid();
-    closeDetail();
-    showToast('Carte supprimée 🗑️');
-  }
-});
-
-// Init
-loadTheme();
-loadCards();
-renderGrid();
+load(); render();
