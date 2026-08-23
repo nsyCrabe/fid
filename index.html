@@ -8,7 +8,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="style.css">
 </head>
-<body data-theme="midnight">
+<body data-theme="light">
   <header class="topbar">
     <div>
       <p class="eyebrow">Portefeuille</p>
@@ -86,8 +86,12 @@
         <button type="button" class="scan-button" id="scanButton" aria-label="Scanner le code">📷</button>
       </div>
 
-      <label class="form-label">Couleur de secours</label>
+      <label class="form-label">Couleur de la carte</label>
       <div class="color-row" id="colorRow"></div>
+      <div class="custom-color-row">
+        <input type="color" id="customColorInput" class="custom-color-picker" value="#3268e8" aria-label="Choisir une couleur personnalisée">
+        <span class="custom-color-label">Choisir une autre couleur</span>
+      </div>
 
       <div class="form-actions">
         <button type="button" class="secondary-button" id="cancelForm">Annuler</button>
